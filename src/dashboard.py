@@ -142,6 +142,26 @@ with tabs[1]:
     fig.update_layout(title="Equity Growth (Start = 100)", xaxis_title="Date", yaxis_title="Equity", height=500)
     st.plotly_chart(fig, use_container_width=True)
 
+    # Exposure Chart
+    st.subheader("🛡️ Portfolio Exposure (Active Slots)")
+    fig_exp = go.Figure()
+    fig_exp.add_trace(go.Scatter(
+        x=res.index, 
+        y=res["Long_Count"], 
+        fill='tozeroy', 
+        name="Active Slots", 
+        line=dict(color='green', width=1)
+    ))
+    fig_exp.update_layout(
+        title="Number of Active Positions over Time",
+        xaxis_title="Date",
+        yaxis_title="Positions",
+        yaxis=dict(range=[0, 11]),
+        height=300
+    )
+    st.plotly_chart(fig_exp, use_container_width=True)
+    st.caption("When exposure is low (e.g., < 5 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
+
     # Current Portfolio View
     st.subheader("🛡️ Current Portfolio Holdings")
     if current_slots:
@@ -192,8 +212,8 @@ with tabs[2]:
         ticker_df = engine.data_cache[selected_ticker].copy()
         ticker_df.index = pd.to_datetime(ticker_df.index)
         
-        # Display Summary for the Ticker
         if not ticker_trades.empty:
+            ticker_trades = ticker_trades.sort_values("Entry_Date")
             avg_ret = ticker_trades["Return (%)"].mean()
             win_rate = (ticker_trades["Return (%)"] > 0).mean() * 100
             
@@ -204,15 +224,15 @@ with tabs[2]:
         else:
             st.info("No theoretical trades found for this ticker using the current strategy.")
 
-        # --- Current Logic Summary Box (Matching Uploaded Image) ---
-        last_row = ticker_df.iloc[-1]
-        curr_price = last_row["Close"]
-        curr_stage = last_row["Stage_Daily"]
-        curr_score = last_row["Score"]
-        curr_atr = last_row["ATR"]
+        # --- Current Logic Summary Box ---
+        latest_row = ticker_df.iloc[-1]
+        curr_price = latest_row["Close"]
+        curr_stage = latest_row["Stage_Daily"]
+        curr_score = latest_row["Score"]
+        curr_atr = latest_row.get("ATR", 0)
         
         # Risk Logic: Stop = -2 ATR, Target = 3x Risk
-        risk_amt = 2 * curr_atr
+        risk_amt = 2 * curr_atr if curr_atr > 0 else curr_price * 0.05
         stop_loss = curr_price - risk_amt
         risk_pct = (risk_amt / curr_price) * 100
         target_amt = 3 * risk_amt
@@ -222,11 +242,12 @@ with tabs[2]:
         st.markdown(f"""
         <div style="background-color: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 5px solid #00ff00; margin-bottom: 20px;">
             <p style="margin: 0; color: #888;">✓ Lógica Aplicada a {selected_ticker}:</p>
-            <p style="margin: 0; font-weight: bold; font-size: 1.1em;">- Precio actual: {curr_price:.2f}</p>
-            <p style="margin: 0;">- Stop Loss (Riesgo): {stop_loss:.2f} ({risk_pct:.2f}% del precio)</p>
-            <p style="margin: 0;">- Profit Target (3x Riesgo): {target_price:.2f} (+{upside_pct:.2f}% de subida)</p>
+            <p style="margin: 0; font-weight: bold; font-size: 1.1em;">- Precio actual: ${curr_price:.2f}</p>
+            <p style="margin: 0;">- Stop Loss (Riesgo): ${stop_loss:.2f} ({risk_pct:.2f}% del precio)</p>
+            <p style="margin: 0;">- Profit Target (3x Riesgo): ${target_price:.2f} (+{upside_pct:.2f}% de subida)</p>
             <p style="margin: 0;">- Stage: {curr_stage}</p>
             <p style="margin: 0;">- Score: {curr_score}</p>
+            <p style="margin: 0;">- Trend Template: {"✅ Pass" if latest_row.get("Trend_Template", False) else "❌ Fail"}</p>
         </div>
         """, unsafe_allow_html=True)
 
