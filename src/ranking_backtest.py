@@ -18,7 +18,7 @@ universe = list(dict.fromkeys([
 ]))
 
 class RankingEngine:
-    def __init__(self, tickers, num_slots=15):
+    def __init__(self, tickers, num_slots=10):
         self.tickers = tickers
         self.num_slots = num_slots
         self.data_cache = {}

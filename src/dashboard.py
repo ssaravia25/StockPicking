@@ -156,11 +156,11 @@ with tabs[1]:
         title="Number of Active Positions over Time",
         xaxis_title="Date",
         yaxis_title="Positions",
-        yaxis=dict(range=[0, 16]),
+        yaxis=dict(range=[0, 11]),
         height=300
     )
     st.plotly_chart(fig_exp, use_container_width=True)
-    st.caption("When exposure is low (e.g., < 7 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
+    st.caption("When exposure is low (e.g., < 5 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
 
     # Current Portfolio View
     st.subheader("🛡️ Current Portfolio Holdings")
@@ -372,4 +372,10 @@ with tabs[3]:
         """)
 
 st.markdown("---")
-st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 2018-2026")
+st.markdown("""
+<div style="text-align: center; color: #888; font-size: 0.8em; padding: 20px;">
+    Hecho por <b>SFinance</b>, not investment advise.<br>
+    Any suggestions? mail to: <a href="mailto:sgseaux@gmail.com" style="color: #00ff00;">sgseaux@gmail.com</a><br>
+    <span style="font-size: 0.7em; opacity: 0.6;">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 2018-2026</span>
+</div>
+""", unsafe_allow_html=True)
