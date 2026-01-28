@@ -156,11 +156,11 @@ with tabs[1]:
         title="Number of Active Positions over Time",
         xaxis_title="Date",
         yaxis_title="Positions",
-        yaxis=dict(range=[0, 11]),
+        yaxis=dict(range=[0, 16]),
         height=300
     )
     st.plotly_chart(fig_exp, use_container_width=True)
-    st.caption("When exposure is low (e.g., < 5 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
+    st.caption("When exposure is low (e.g., < 7 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
 
     # Current Portfolio View
     st.subheader("🛡️ Current Portfolio Holdings")
@@ -251,55 +251,58 @@ with tabs[2]:
         </div>
         """, unsafe_allow_html=True)
 
-        # Plotly chart with markers
+        # --- Modernized Professional Chart ---
         fig_t = go.Figure()
-        
-        # --- Stage Background Shading ---
-        stage_colors = {
-            "Stage 2": "rgba(0, 255, 0, 0.15)",         # Green
-            "Stage 3": "rgba(255, 105, 180, 0.15)",     # Pink
-            "Stage 4": "rgba(255, 165, 0, 0.15)",       # Orange
-            "Stage 1 / Neutral": "rgba(200, 200, 200, 0.1)" # Gray
+
+        # Custom Styling Constants
+        COLORS = {
+            "price": "#E0E0E0",
+            "sma10": "#2E7D32", # Green
+            "sma20": "#F9A825", # Amber
+            "sma50": "#C62828", # Red
+            "sma200": "#1565C0", # Blue
+            "volume": "rgba(100, 100, 100, 0.2)",
+            "stage": {
+                "Stage 2": "rgba(0, 255, 0, 0.05)",
+                "Stage 4": "rgba(255, 0, 0, 0.05)",
+                "Stage 3": "rgba(255, 255, 0, 0.05)"
+            }
         }
-        
-        # Calculate regions
-        df_shading = ticker_df.copy()
-        df_shading['stage_change'] = df_shading['Stage_Daily'] != df_shading['Stage_Daily'].shift(1)
-        change_dates = df_shading[df_shading['stage_change']].index.tolist()
-        if not change_dates or change_dates[0] != df_shading.index[0]:
-            change_dates.insert(0, df_shading.index[0])
-        change_dates.append(df_shading.index[-1])
-        
-        for i in range(len(change_dates)-1):
-            start_d = change_dates[i]
-            end_d = change_dates[i+1]
-            stage_val = df_shading.loc[start_d, 'Stage_Daily']
-            fig_t.add_vrect(
-                x0=start_d, x1=end_d,
-                fillcolor=stage_colors.get(stage_val, "rgba(0,0,0,0)"),
-                layer="below", line_width=0,
-            )
 
-        # Base Price
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["Close"], name="Price", line=dict(color='black', width=1.5)))
+        # Stage Shading
+        for stage_name, color in COLORS["stage"].items():
+            mask = ticker_df["Stage_Daily"] == stage_name
+            if mask.any():
+                intervals = []
+                start = None
+                for d, val in mask.items():
+                    if val and start is None: start = d
+                    elif not val and start is not None:
+                        intervals.append((start, d))
+                        start = None
+                if start is not None: intervals.append((start, mask.index[-1]))
+                
+                for start, end in intervals:
+                    fig_t.add_vrect(x0=start, x1=end, fillcolor=color, layer="below", line_width=0)
+
+        # Volume (Secondary Axis)
+        fig_t.add_trace(go.Bar(
+            x=ticker_df.index, y=ticker_df["Volume"],
+            name="Volume", marker_color=COLORS["volume"],
+            yaxis="y2", opacity=0.3
+        ))
+
+        # Moving Averages
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA200"], name="SMA 200", line=dict(color=COLORS["sma200"], width=1.5, dash='dash')))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA50"], name="SMA 50", line=dict(color=COLORS["sma50"], width=1.2)))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA20"], name="SMA 20", line=dict(color=COLORS["sma20"], width=1)))
         
-        # Technical Indicators
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA10"], name="SMA10", line=dict(color='blue', width=1, dash='dash')))
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA20"], name="SMA20", line=dict(color='purple', width=1, dash='dash')))
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA50"], name="SMA50", line=dict(color='red', width=2)))
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA150"], name="SMA150", line=dict(color='orange', width=1, dash='dash')))
-        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA200"], name="SMA200", line=dict(color='green', width=1, dash='dash')))
+        # Price Curve
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["Close"], name="Price", line=dict(color=COLORS["price"], width=2.5)))
 
-        # Risk Lines (Horizontal)
-        fig_t.add_hline(y=stop_loss, line_dash="dot", line_color="red", annotation_text="Stop Loss")
-        fig_t.add_hline(y=target_price, line_dash="dot", line_color="green", annotation_text="Target (3:1)")
-
-        # On-Chart Annotations
-        fig_t.add_annotation(
-            xref="paper", yref="paper", x=0.02, y=0.95,
-            text=f"Stage Actual: {curr_stage}<br>Score Actual: {curr_score}",
-            showarrow=False, align="left", bgcolor="rgba(255,255,255,0.7)", font=dict(color="blue", size=14)
-        )
+        # Risk Lines
+        fig_t.add_hline(y=stop_loss, line_dash="dot", line_color="#FF5252", opacity=0.8, annotation_text="Risk Level", annotation_position="bottom right")
+        fig_t.add_hline(y=target_price, line_dash="dot", line_color="#69F0AE", opacity=0.8, annotation_text="Target 3:1", annotation_position="top right")
 
         # Highlights for Entry/Exit
         if not ticker_trades.empty:
@@ -309,28 +312,40 @@ with tabs[2]:
             fig_t.add_trace(go.Scatter(
                 x=entries["Entry_Date"], y=entries["Entry_Price"],
                 mode='markers', name='Buy Entry',
-                marker=dict(symbol='triangle-up', size=12, color='green')
+                marker=dict(symbol='triangle-up', size=14, color='#00E676', line=dict(width=1, color='white'))
             ))
             
             fig_t.add_trace(go.Scatter(
                 x=exits["Exit_Date"], y=exits["Exit_Price"],
                 mode='markers', name='Sell Exit',
-                marker=dict(symbol='triangle-down', size=12, color='red')
+                marker=dict(symbol='triangle-down', size=14, color='#FF1744', line=dict(width=1, color='white'))
             ))
         
-        fig_t.update_layout(title=f"{selected_ticker} Trade History", xaxis_title="Date", yaxis_title="Price", height=600)
+        fig_t.update_layout(
+            title=dict(text=f"<b>{selected_ticker}</b> Analysis Hub", font=dict(size=24, color='white')),
+            xaxis_title="Date",
+            yaxis_title="Price ($)",
+            yaxis2=dict(title="Volume", overlaying="y", side="right", showgrid=False, visible=False),
+            height=700,
+            template="plotly_dark",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=50, r=50, t=80, b=50),
+            hovermode="x unified",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
         st.plotly_chart(fig_t, use_container_width=True)
         
         # Trades Table
         if not ticker_trades.empty:
-            st.subheader("Trade Log Detail")
+            st.subheader("📊 Performance: Theoretical Trade Logs")
             st.dataframe(ticker_trades.style.format({
                 "Entry_Price": "${:.2f}",
                 "Exit_Price": "${:.2f}",
-                "Return (%)": "{:.2f}%",
+                "Return (%)": "{:+.2f}%",
                 "Entry_Date": lambda x: x.strftime('%Y-%m-%d'),
                 "Exit_Date": lambda x: x.strftime('%Y-%m-%d')
-            }), use_container_width=True)
+            }).background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=-15, vmax=15), use_container_width=True)
     else:
         st.warning(f"Data for {selected_ticker} not loaded correctly. Try refreshing.")
 
