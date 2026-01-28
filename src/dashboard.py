@@ -1,0 +1,335 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from ranking_backtest import RankingEngine, universe, get_stats
+import yfinance as yf
+from datetime import datetime
+import logging
+
+# Page config
+st.set_page_config(page_title="Trading Matrix Dashboard", layout="wide")
+
+# Styling
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        border: 1px solid #e1e4e8;
+    }
+    .status-stage2 { color: #28a745; font-weight: bold; }
+    .status-other { color: #6c757d; }
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_resource
+def get_engine():
+    engine = RankingEngine(universe)
+    engine.load_data()
+    return engine
+
+@st.cache_data
+def run_backtest(_engine, exit_strategy):
+    res_equity, res_trades = _engine.run(exit_strategy=exit_strategy)
+    # The 'current' slots are those in engine.long_slots after run()
+    # But since it's cached, we should return them
+    return res_equity, res_trades, _engine.long_slots
+
+@st.cache_data
+def get_spy_data(start_date, end_date):
+    spy = yf.Ticker("SPY").history(start=start_date, end=end_date)
+    spy.index = spy.index.tz_localize(None)
+    spy_daily = spy["Close"].pct_change().fillna(0)
+    spy_equity = (1 + spy_daily).cumprod() * 100
+    return pd.DataFrame({"Equity": spy_equity}, index=spy.index)
+
+def calculate_annual_metrics(equity_df):
+    """Calculate Return per year and YTD."""
+    equity_df = equity_df.copy()
+    equity_df.index = pd.to_datetime(equity_df.index)
+    
+    # Resample to year end
+    annual = equity_df["Equity"].resample('YE').last()
+    
+    # Calculate returns
+    years = []
+    returns = []
+    
+    # First Year
+    first_val = equity_df["Equity"].iloc[0]
+    years.append(annual.index[0].year)
+    returns.append(((annual.iloc[0] / first_val) - 1) * 100)
+    
+    # Subsequent Years
+    for i in range(1, len(annual)):
+        years.append(annual.index[i].year)
+        ret = ((annual.iloc[i] / annual.iloc[i-1]) - 1) * 100
+        returns.append(ret)
+        
+    df_returns = pd.DataFrame({"Year": years, "Return (%)": returns})
+    return df_returns
+
+# --- Sidebar ---
+st.sidebar.title("🛡️ Trading Matrix")
+st.sidebar.write("Strategy: **Trend Guardian**")
+st.sidebar.markdown("---")
+exit_strategy = st.sidebar.selectbox("Exit Strategy", ["trend_guardian", "sma_trailing", "score_decay"])
+
+# Initialize Engine
+engine = get_engine()
+
+# --- Main App ---
+st.title("📈 Trading Matrix Performance & Alerts")
+
+tabs = st.tabs(["🚀 The Matrix (Live Alerts)", "📊 Performance Hub", "🔍 Trade Explorer", "📜 Strategy Rules"])
+
+# Tab 1: Live Alerts
+with tabs[0]:
+    st.header("Today's Top Trend Guardian Candidates")
+    
+    if st.button("Run Live Scan"):
+        with st.spinner("Scanning 80 tickers..."):
+            results = []
+            for t, df in engine.data_cache.items():
+                last_row = df.iloc[-1]
+                results.append({
+                    "Ticker": t,
+                    "Stage": last_row["Stage_Daily"],
+                    "Score": round(last_row["Score"], 1),
+                    "Price": round(last_row["Close"], 2),
+                    "SMA10": round(last_row["SMA10"], 2),
+                    "Trend Template": "✅ Pass" if last_row.get("Trend_Template", False) else "❌ Fail"
+                })
+            
+            summary_df = pd.DataFrame(results)
+            
+            # Filter for Best (Stage 2 & Score < 4)
+            best_candidates = summary_df[(summary_df["Stage"] == "Stage 2") & (summary_df["Score"] <= 4)].sort_values("Score")
+            
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.subheader("🎯 Buy Alerts (Stage 2 + Score < 4)")
+                st.dataframe(best_candidates, use_container_width=True)
+            
+            with col2:
+                st.subheader("📉 Full Universe Snapshot")
+                st.dataframe(summary_df.sort_values("Score"), use_container_width=True)
+
+# Tab 2: Performance Hub
+with tabs[1]:
+    st.header(f"Backtest Results: {exit_strategy.replace('_', ' ').title()}")
+    
+    res, trade_log, current_slots = run_backtest(engine, exit_strategy)
+    spy_res = get_spy_data(res.index[0], res.index[-1])
+    
+    # Stats
+    stats_tg = get_stats(res)
+    stats_spy = get_stats(spy_res)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Return", f"{stats_tg[0]:.1f}%", f"{stats_tg[0]-stats_spy[0]:.1f}% vs SPY")
+    c2.metric("CAGR", f"{stats_tg[3]:.1f}%", f"{stats_tg[3]-stats_spy[3]:.1f}% vs SPY")
+    c3.metric("Max Drawdown", f"{stats_tg[2]:.1f}%", f"{stats_tg[2]-stats_spy[2]:.1f}% vs SPY", delta_color="inverse")
+    c4.metric("Sharpe Ratio", f"{stats_tg[3]/stats_tg[1]:.2f}" if stats_tg[1] > 0 else "0.00")
+
+    # Equity Curve Plot
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=res.index, y=res["Equity"], name="Strategy", line=dict(color='blue', width=3)))
+    fig.add_trace(go.Scatter(x=spy_res.index, y=spy_res["Equity"], name="SPY Benchmark", line=dict(color='gray', dash='dash')))
+    fig.update_layout(title="Equity Growth (Start = 100)", xaxis_title="Date", yaxis_title="Equity", height=500)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Current Portfolio View
+    st.subheader("🛡️ Current Portfolio Holdings")
+    if current_slots:
+        holdings = []
+        for t, entry_p, entry_d in current_slots:
+            curr_p = engine.data_cache[t].iloc[-1]["Close"]
+            perf = (curr_p - entry_p) / entry_p * 100
+            holdings.append({
+                "Ticker": t,
+                "Entry Date": entry_d.strftime('%Y-%m-%d'),
+                "Entry Price": entry_p,
+                "Current Price": curr_p,
+                "Performance (%)": perf
+            })
+        st.dataframe(pd.DataFrame(holdings).style.format({
+            "Entry Price": "${:.2f}",
+            "Current Price": "${:.2f}",
+            "Performance (%)": "{:+.2f}%"
+        }), use_container_width=True)
+    else:
+        st.write("Portfolio is currently empty.")
+
+    # Annual Returns
+    st.subheader("Annual Performance Breakdown")
+    col_ann1, col_ann2 = st.columns(2)
+    
+    with col_ann1:
+        ann_stats = calculate_annual_metrics(res)
+        st.write("**Strategy Returns by Year**")
+        st.dataframe(ann_stats.style.format({"Return (%)": "{:.2f}%"}), use_container_width=True)
+    
+    with col_ann2:
+        spy_ann = calculate_annual_metrics(spy_res)
+        st.write("**SPY Returns by Year**")
+        st.dataframe(spy_ann.style.format({"Return (%)": "{:.2f}%"}), use_container_width=True)
+
+# Tab 3: Trade Explorer
+with tabs[2]:
+    st.header("Deep Dive: Theoretical Strategy Potential")
+    st.write("This view shows every window where the strategy rules were met, ignoring portfolio limits.")
+    
+    # Select from full universe
+    selected_ticker = st.selectbox("Select a Ticker to analyze", sorted(universe))
+    
+    ticker_trades = engine.get_ticker_trades(selected_ticker, exit_strategy=exit_strategy)
+    
+    if not ticker_trades.empty:
+        ticker_trades = ticker_trades.sort_values("Entry_Date")
+        ticker_df = engine.data_cache[selected_ticker].copy()
+        ticker_df.index = pd.to_datetime(ticker_df.index)
+        
+        # Display Summary for the Ticker
+        avg_ret = ticker_trades["Return (%)"].mean()
+        win_rate = (ticker_trades["Return (%)"] > 0).mean() * 100
+        
+        col_t1, col_t2, col_t3 = st.columns(3)
+        col_t1.metric("Total Trades", len(ticker_trades))
+        col_t2.metric("Avg Return/Trade", f"{avg_ret:.2f}%")
+        col_t3.metric("Win Rate", f"{win_rate:.1f}%")
+
+        # --- Current Logic Summary Box (Matching Uploaded Image) ---
+        last_row = ticker_df.iloc[-1]
+        curr_price = last_row["Close"]
+        curr_stage = last_row["Stage_Daily"]
+        curr_score = last_row["Score"]
+        curr_atr = last_row["ATR"]
+        
+        # Risk Logic: Stop = -2 ATR, Target = 3x Risk
+        risk_amt = 2 * curr_atr
+        stop_loss = curr_price - risk_amt
+        risk_pct = (risk_amt / curr_price) * 100
+        target_amt = 3 * risk_amt
+        target_price = curr_price + target_amt
+        upside_pct = (target_amt / curr_price) * 100
+
+        st.markdown(f"""
+        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 5px solid #00ff00; margin-bottom: 20px;">
+            <p style="margin: 0; color: #888;">✓ Lógica Aplicada a {selected_ticker}:</p>
+            <p style="margin: 0; font-weight: bold; font-size: 1.1em;">- Precio actual: {curr_price:.2f}</p>
+            <p style="margin: 0;">- Stop Loss (Riesgo): {stop_loss:.2f} ({risk_pct:.2f}% del precio)</p>
+            <p style="margin: 0;">- Profit Target (3x Riesgo): {target_price:.2f} (+{upside_pct:.2f}% de subida)</p>
+            <p style="margin: 0;">- Stage: {curr_stage}</p>
+            <p style="margin: 0;">- Score: {curr_score}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Plotly chart with markers
+        fig_t = go.Figure()
+        
+        # --- Stage Background Shading ---
+        stage_colors = {
+            "Stage 2": "rgba(0, 255, 0, 0.15)",         # Green
+            "Stage 3": "rgba(255, 105, 180, 0.15)",     # Pink
+            "Stage 4": "rgba(255, 165, 0, 0.15)",       # Orange
+            "Stage 1 / Neutral": "rgba(200, 200, 200, 0.1)" # Gray
+        }
+        
+        # Calculate regions
+        df_shading = ticker_df.copy()
+        df_shading['stage_change'] = df_shading['Stage_Daily'] != df_shading['Stage_Daily'].shift(1)
+        change_dates = df_shading[df_shading['stage_change']].index.tolist()
+        if not change_dates or change_dates[0] != df_shading.index[0]:
+            change_dates.insert(0, df_shading.index[0])
+        change_dates.append(df_shading.index[-1])
+        
+        for i in range(len(change_dates)-1):
+            start_d = change_dates[i]
+            end_d = change_dates[i+1]
+            stage_val = df_shading.loc[start_d, 'Stage_Daily']
+            fig_t.add_vrect(
+                x0=start_d, x1=end_d,
+                fillcolor=stage_colors.get(stage_val, "rgba(0,0,0,0)"),
+                layer="below", line_width=0,
+            )
+
+        # Base Price
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["Close"], name="Price", line=dict(color='black', width=1.5)))
+        
+        # Technical Indicators
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA10"], name="SMA10", line=dict(color='blue', width=1, dash='dash')))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA20"], name="SMA20", line=dict(color='purple', width=1, dash='dash')))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA50"], name="SMA50", line=dict(color='red', width=2)))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA150"], name="SMA150", line=dict(color='orange', width=1, dash='dash')))
+        fig_t.add_trace(go.Scatter(x=ticker_df.index, y=ticker_df["SMA200"], name="SMA200", line=dict(color='green', width=1, dash='dash')))
+
+        # Risk Lines (Horizontal)
+        fig_t.add_hline(y=stop_loss, line_dash="dot", line_color="red", annotation_text="Stop Loss")
+        fig_t.add_hline(y=target_price, line_dash="dot", line_color="green", annotation_text="Target (3:1)")
+
+        # On-Chart Annotations
+        fig_t.add_annotation(
+            xref="paper", yref="paper", x=0.02, y=0.95,
+            text=f"Stage Actual: {curr_stage}<br>Score Actual: {curr_score}",
+            showarrow=False, align="left", bgcolor="rgba(255,255,255,0.7)", font=dict(color="blue", size=14)
+        )
+
+        # Highlights for Entry/Exit
+        entries = ticker_trades[["Entry_Date", "Entry_Price"]]
+        exits = ticker_trades[["Exit_Date", "Exit_Price"]]
+        
+        fig_t.add_trace(go.Scatter(
+            x=entries["Entry_Date"], y=entries["Entry_Price"],
+            mode='markers', name='Buy Entry',
+            marker=dict(symbol='triangle-up', size=12, color='green')
+        ))
+        
+        fig_t.add_trace(go.Scatter(
+            x=exits["Exit_Date"], y=exits["Exit_Price"],
+            mode='markers', name='Sell Exit',
+            marker=dict(symbol='triangle-down', size=12, color='red')
+        ))
+        
+        fig_t.update_layout(title=f"{selected_ticker} Trade History", xaxis_title="Date", yaxis_title="Price", height=600)
+        st.plotly_chart(fig_t, use_container_width=True)
+        
+        # Trades Table
+        st.subheader("Trade Log Detail")
+        st.dataframe(ticker_trades.style.format({
+            "Entry_Price": "${:.2f}",
+            "Exit_Price": "${:.2f}",
+            "Return (%)": "{:.2f}%",
+            "Entry_Date": lambda x: x.strftime('%Y-%m-%d'),
+            "Exit_Date": lambda x: x.strftime('%Y-%m-%d')
+        }), use_container_width=True)
+    else:
+        st.info("No trades found in the backtest for this strategy.")
+
+# Tab 4: Strategy Rules
+with tabs[3]:
+    st.header("The Matrix Logic")
+    col_rule1, col_rule2 = st.columns(2)
+    
+    with col_rule1:
+        st.subheader("🛡️ Long Entry Rules")
+        st.write("""
+        1. **Stage 2 Filter**: Stock must be in Stage 2 (Advancing Phase).
+        2. **Trend Template**: Pass all 8 Minervini Trend Rules.
+        3. **Score < 4**: Price must be within ~4% of the 10-day Moving Average (Low-risk pullback).
+        """)
+        
+    with col_rule2:
+        st.subheader("🚪 Exit Rules")
+        st.write(f"""
+        **Selected Strategy: {exit_strategy}**
+        - **Trend Guardian**: Exit only if Stage 2 breaks (Stock moves to Stage 3 or 4).
+        - **SMA Trailing**: Exit if Price closes below 20-day SMA.
+        - **Score Decay**: Exit if momentum stalls after a peak (Score > 8 + price weakness).
+        """)
+
+st.markdown("---")
+st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 2018-2026")

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+
+# Data & Exports
+src/batch_results.csv
+*.png
+*.webp
+*.csv
+
+# OS
+.DS_Store
