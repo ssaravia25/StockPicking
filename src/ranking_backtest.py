@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
 
 # Expanded Universe (Nasdaq 100 + S&P 500 Representatives)
-universe = [
+universe = list(dict.fromkeys([
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AVGO", "COST", "NFLX",
     "ADBE", "AMD", "ASML", "AZN", "GILD", "INTC", "PEP", "PYPL", "SNOW", "DIS",
     "PFE", "MMM", "CVS", "SNAP", "BABA", "JNJ", "WMT", "V", "MA", "PG",
@@ -20,8 +20,8 @@ universe = [
     "TMO", "ABT", "LIN", "ORCL", "ACN", "CMCSA", "DHR", "NEE", "TXN", "PM",
     "UNP", "INTU", "LOW", "UPS", "RTX", "BMY", "HON", "AMGN", "GE", "ISRG",
     "DE", "T", "CAT", "AXP", "GS", "MS", "SPGI", "BLK", "MDLZ", "TJX",
-    "AMT", "CVS", "PLD", "LMT", "LRCX", "ADI", "EL", "MU", "SCHW", "CI"
-]
+    "AMT", "PLD", "LMT", "LRCX", "ADI", "EL", "MU", "SCHW", "CI"
+]))
 
 class RankingEngine:
     def __init__(self, tickers, num_slots=10):
@@ -141,8 +141,8 @@ class RankingEngine:
                     if t in active_tickers or date not in df.index: continue
                     row = df.loc[date]
                     
-                    # Long Entry: Stage 2 + Score < 4
-                    if row["Stage_Daily"] == "Stage 2" and row["Score"] <= 4:
+                    # Long Entry: Stage 2 + Trend Template + Score < 4
+                    if row["Stage_Daily"] == "Stage 2" and row.get("Trend_Template", False) and row["Score"] <= 4:
                         candidates_long.append((t, row["Score"], row["Close"]))
 
                 # Sort longs by Score (lower is better/tighter)

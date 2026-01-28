@@ -188,19 +188,21 @@ with tabs[2]:
     
     ticker_trades = engine.get_ticker_trades(selected_ticker, exit_strategy=exit_strategy)
     
-    if not ticker_trades.empty:
-        ticker_trades = ticker_trades.sort_values("Entry_Date")
+    if selected_ticker in engine.data_cache:
         ticker_df = engine.data_cache[selected_ticker].copy()
         ticker_df.index = pd.to_datetime(ticker_df.index)
         
         # Display Summary for the Ticker
-        avg_ret = ticker_trades["Return (%)"].mean()
-        win_rate = (ticker_trades["Return (%)"] > 0).mean() * 100
-        
-        col_t1, col_t2, col_t3 = st.columns(3)
-        col_t1.metric("Total Trades", len(ticker_trades))
-        col_t2.metric("Avg Return/Trade", f"{avg_ret:.2f}%")
-        col_t3.metric("Win Rate", f"{win_rate:.1f}%")
+        if not ticker_trades.empty:
+            avg_ret = ticker_trades["Return (%)"].mean()
+            win_rate = (ticker_trades["Return (%)"] > 0).mean() * 100
+            
+            col_t1, col_t2, col_t3 = st.columns(3)
+            col_t1.metric("Total Trades", len(ticker_trades))
+            col_t2.metric("Avg Return/Trade", f"{avg_ret:.2f}%")
+            col_t3.metric("Win Rate", f"{win_rate:.1f}%")
+        else:
+            st.info("No theoretical trades found for this ticker using the current strategy.")
 
         # --- Current Logic Summary Box (Matching Uploaded Image) ---
         last_row = ticker_df.iloc[-1]
@@ -279,35 +281,37 @@ with tabs[2]:
         )
 
         # Highlights for Entry/Exit
-        entries = ticker_trades[["Entry_Date", "Entry_Price"]]
-        exits = ticker_trades[["Exit_Date", "Exit_Price"]]
-        
-        fig_t.add_trace(go.Scatter(
-            x=entries["Entry_Date"], y=entries["Entry_Price"],
-            mode='markers', name='Buy Entry',
-            marker=dict(symbol='triangle-up', size=12, color='green')
-        ))
-        
-        fig_t.add_trace(go.Scatter(
-            x=exits["Exit_Date"], y=exits["Exit_Price"],
-            mode='markers', name='Sell Exit',
-            marker=dict(symbol='triangle-down', size=12, color='red')
-        ))
+        if not ticker_trades.empty:
+            entries = ticker_trades[["Entry_Date", "Entry_Price"]]
+            exits = ticker_trades[["Exit_Date", "Exit_Price"]]
+            
+            fig_t.add_trace(go.Scatter(
+                x=entries["Entry_Date"], y=entries["Entry_Price"],
+                mode='markers', name='Buy Entry',
+                marker=dict(symbol='triangle-up', size=12, color='green')
+            ))
+            
+            fig_t.add_trace(go.Scatter(
+                x=exits["Exit_Date"], y=exits["Exit_Price"],
+                mode='markers', name='Sell Exit',
+                marker=dict(symbol='triangle-down', size=12, color='red')
+            ))
         
         fig_t.update_layout(title=f"{selected_ticker} Trade History", xaxis_title="Date", yaxis_title="Price", height=600)
         st.plotly_chart(fig_t, use_container_width=True)
         
         # Trades Table
-        st.subheader("Trade Log Detail")
-        st.dataframe(ticker_trades.style.format({
-            "Entry_Price": "${:.2f}",
-            "Exit_Price": "${:.2f}",
-            "Return (%)": "{:.2f}%",
-            "Entry_Date": lambda x: x.strftime('%Y-%m-%d'),
-            "Exit_Date": lambda x: x.strftime('%Y-%m-%d')
-        }), use_container_width=True)
+        if not ticker_trades.empty:
+            st.subheader("Trade Log Detail")
+            st.dataframe(ticker_trades.style.format({
+                "Entry_Price": "${:.2f}",
+                "Exit_Price": "${:.2f}",
+                "Return (%)": "{:.2f}%",
+                "Entry_Date": lambda x: x.strftime('%Y-%m-%d'),
+                "Exit_Date": lambda x: x.strftime('%Y-%m-%d')
+            }), use_container_width=True)
     else:
-        st.info("No trades found in the backtest for this strategy.")
+        st.warning(f"Data for {selected_ticker} not loaded correctly. Try refreshing.")
 
 # Tab 4: Strategy Rules
 with tabs[3]:
