@@ -259,7 +259,11 @@ with tabs[2]:
 
         # --- Financial Metrics Section ---
         st.subheader("💎 Financial Health & Valuation")
-        ticker_metrics = metrics_engine.get_ticker_metrics(selected_ticker)
+        
+        # Persistence Optimization: Manual Refresh Toggle
+        force_refresh = st.checkbox("🔄 Refresh Fundamentals (Bypass Cache)", value=False, help="Forces a fresh download from Yahoo Finance. Otherwise, data resets every 30 days.")
+        
+        ticker_metrics = metrics_engine.get_ticker_metrics(selected_ticker, force_update=force_refresh)
         
         if ticker_metrics:
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
