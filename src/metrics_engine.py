@@ -77,3 +77,35 @@ class MetricsEngine:
                 self._save_cache()
         
         return self.metrics_cache.get(ticker_symbol)
+
+    def calculate_quality_rankings(self):
+        """Calculate universe-wide Quality Ranking (QR) scores."""
+        if not self.metrics_cache:
+            return {}
+
+        df = pd.DataFrame(self.metrics_cache.values())
+        
+        # Ensure numeric conversion
+        numeric_cols = ['ROE (%)', 'Profit Margin (%)', 'Debt to Equity', 'Past EPS Growth (%)', 'Expected Growth (%)']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Global Ranking (Percentiles 0-100)
+        def get_pct(col, ascending=True):
+            if col not in df.columns or df[col].isnull().all():
+                return pd.Series(0, index=df.index)
+            return df[col].rank(pct=True, ascending=ascending) * 100
+
+        # Weights based on user's sp500_dashboard.ipynb logic
+        # High ROE (30%), High Margin (30%), Low Debt (20%), High Growth (20%)
+        q_roe = 0.30 * get_pct('ROE (%)', ascending=True)
+        q_margin = 0.30 * get_pct('Profit Margin (%)', ascending=True)
+        q_debt = 0.20 * (100 - get_pct('Debt to Equity', ascending=True))
+        q_growth = 0.10 * get_pct('Past EPS Growth (%)', ascending=True)
+        q_exp_growth = 0.10 * get_pct('Expected Growth (%)', ascending=True)
+
+        df['QR_Score'] = (q_roe + q_margin + q_debt + q_growth + q_exp_growth).round(1)
+        
+        # Return ticker -> QR mapping
+        return dict(zip(df['Ticker'], df['QR_Score']))

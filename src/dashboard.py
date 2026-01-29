@@ -98,7 +98,10 @@ with tabs[0]:
     st.header("Today's Top Trend Guardian Candidates")
     
     if st.button("Run Live Scan"):
-        with st.spinner("Scanning 80 tickers..."):
+        with st.spinner("Scanning universe and calculating Quality Rankings..."):
+            # 1. Fetch Quality Rankings
+            qr_rankings = metrics_engine.calculate_quality_rankings()
+            
             results = []
             for t, df in engine.data_cache.items():
                 last_row = df.iloc[-1]
@@ -107,13 +110,32 @@ with tabs[0]:
                     "Stage": last_row["Stage_Daily"],
                     "Score": round(last_row["Score"], 1),
                     "Price": round(last_row["Close"], 2),
-                    "SMA10": round(last_row["SMA10"], 2),
-                    "Trend Template": "✅ Pass" if last_row.get("Trend_Template", False) else "❌ Fail"
+                    "Trend Template": "✅ Pass" if last_row.get("Trend_Template", False) else "❌ Fail" if "Trend_Template" in last_row else "N/A",
+                    "Quality Ranking (QR)": qr_rankings.get(t, "N/A")
                 })
             
             summary_df = pd.DataFrame(results)
             
-            # Filter for Best (Stage 2 & Score < 4)
+            # --- 💎 TOP Ideas (Quality + Technical) ---
+            # Criteria: Stage 2, Score < 4, Top Quality (QR > 80 - conservative or user's preference)
+            # User mentioned "primer percentil", so let's aim for QR > 90
+            top_ideas = summary_df[
+                (summary_df["Stage"] == "Stage 2") & 
+                (summary_df["Score"] <= 4) & 
+                (pd.to_numeric(summary_df["Quality Ranking (QR)"], errors='coerce') >= 85)
+            ].sort_values("Quality Ranking (QR)", ascending=False)
+
+            if not top_ideas.empty:
+                st.markdown("""
+                <div style="padding: 10px; border-radius: 5px; border: 1px solid #FFD700; background-color: rgba(255, 215, 0, 0.05); margin-bottom: 20px;">
+                    <h3 style="margin-top:0; color: #FFD700;">💎 TOP Ideas: Premium Opportunities</h3>
+                    <p style="font-size: 0.9em; color: #888;">Stage 2 + Score < 4 + Quality Ranking > 85%. Los mejores fundamentales en las mejores configuraciones técnicas.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                st.dataframe(top_ideas.style.set_properties(**{'background-color': 'rgba(255, 215, 0, 0.1)', 'color': 'white'}), use_container_width=True)
+                st.markdown("---")
+
+            # Buy Alerts
             best_candidates = summary_df[(summary_df["Stage"] == "Stage 2") & (summary_df["Score"] <= 4)].sort_values("Score")
             
             col1, col2 = st.columns([1, 1])
