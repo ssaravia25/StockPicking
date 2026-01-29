@@ -105,13 +105,22 @@ with tabs[0]:
             results = []
             for t, df in engine.data_cache.items():
                 last_row = df.iloc[-1]
+                
+                # Proactive fetching for candidates to enable QR Ranking
+                is_candidate = (last_row["Stage_Daily"] == "Stage 2") and (last_row["Score"] <= 6)
+                qr_val = "N/A"
+                if is_candidate:
+                    m = metrics_engine.get_ticker_metrics(t)
+                    if m:
+                        qr_val = qr_rankings.get(t, "N/A")
+                
                 results.append({
                     "Ticker": t,
                     "Stage": last_row["Stage_Daily"],
                     "Score": round(last_row["Score"], 1),
                     "Price": round(last_row["Close"], 2),
                     "Trend Template": "✅ Pass" if last_row.get("Trend_Template", False) else "❌ Fail" if "Trend_Template" in last_row else "N/A",
-                    "Quality Ranking (QR)": qr_rankings.get(t, "N/A")
+                    "Quality Ranking (QR)": qr_val
                 })
             
             summary_df = pd.DataFrame(results)
