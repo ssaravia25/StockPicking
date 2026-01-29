@@ -374,7 +374,7 @@ with tabs[3]:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #888; font-size: 0.8em; padding: 20px;">
-    Hecho por <b>SFinance</b>, not investment advise.<br>
+    Made by <b>SFinance</b>, not investment advise.<br>
     Any suggestions? mail to: <a href="mailto:sgseaux@gmail.com" style="color: #00ff00;">sgseaux@gmail.com</a><br>
     <span style="font-size: 0.7em; opacity: 0.6;">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 2018-2026</span>
 </div>
