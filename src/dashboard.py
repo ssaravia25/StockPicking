@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from ranking_backtest import RankingEngine, universe, get_stats
+from metrics_engine import MetricsEngine
 import yfinance as yf
 from datetime import datetime
 import logging
@@ -30,6 +31,10 @@ def get_engine():
     engine = RankingEngine(universe)
     engine.load_data()
     return engine
+
+@st.cache_resource
+def get_metrics_engine():
+    return MetricsEngine(universe)
 
 @st.cache_data
 def run_backtest(_engine, exit_strategy):
@@ -78,8 +83,9 @@ st.sidebar.write("Strategy: **Trend Guardian**")
 st.sidebar.markdown("---")
 exit_strategy = st.sidebar.selectbox("Exit Strategy", ["trend_guardian", "sma_trailing", "score_decay"])
 
-# Initialize Engine
+# Initialize Engines
 engine = get_engine()
+metrics_engine = get_metrics_engine()
 
 # --- Main App ---
 st.title("📈 Trading Matrix Performance & Alerts")
@@ -156,11 +162,11 @@ with tabs[1]:
         title="Number of Active Positions over Time",
         xaxis_title="Date",
         yaxis_title="Positions",
-        yaxis=dict(range=[0, 11]),
+        yaxis=dict(range=[0, 16]),
         height=300
     )
     st.plotly_chart(fig_exp, use_container_width=True)
-    st.caption("When exposure is low (e.g., < 5 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
+    st.caption("When exposure is low (e.g., < 7 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
 
     # Current Portfolio View
     st.subheader("🛡️ Current Portfolio Holdings")
@@ -241,8 +247,8 @@ with tabs[2]:
 
         st.markdown(f"""
         <div style="background-color: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 5px solid #00ff00; margin-bottom: 20px;">
-            <p style="margin: 0; color: #888;">✓ Lógica Aplicada a {selected_ticker}:</p>
-            <p style="margin: 0; font-weight: bold; font-size: 1.1em;">- Precio actual: ${curr_price:.2f}</p>
+            <p style="margin: 0; color: #888;">✓ Technical Logic for {selected_ticker}:</p>
+            <p style="margin: 0; font-weight: bold; font-size: 1.1em;">- Price actual: ${curr_price:.2f}</p>
             <p style="margin: 0;">- Stop Loss (Riesgo): ${stop_loss:.2f} ({risk_pct:.2f}% del precio)</p>
             <p style="margin: 0;">- Profit Target (3x Riesgo): ${target_price:.2f} (+{upside_pct:.2f}% de subida)</p>
             <p style="margin: 0;">- Stage: {curr_stage}</p>
@@ -250,6 +256,30 @@ with tabs[2]:
             <p style="margin: 0;">- Trend Template: {"✅ Pass" if latest_row.get("Trend_Template", False) else "❌ Fail"}</p>
         </div>
         """, unsafe_allow_html=True)
+
+        # --- Financial Metrics Section ---
+        st.subheader("💎 Financial Health & Valuation")
+        ticker_metrics = metrics_engine.get_ticker_metrics(selected_ticker)
+        
+        if ticker_metrics:
+            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+            
+            def format_metric(val, is_pct=False):
+                if val == 'N/A' or val is None: return "N/A"
+                if is_pct: return f"{val:.1f}%"
+                return f"{val:.2f}"
+
+            m_col1.metric("ROE", format_metric(ticker_metrics.get('ROE (%)'), True))
+            m_col2.metric("Forward PER", format_metric(ticker_metrics.get('Forward PER')))
+            m_col3.metric("PEG Ratio", format_metric(ticker_metrics.get('PEG Ratio')))
+            m_col4.metric("Profit Margin", format_metric(ticker_metrics.get('Profit Margin (%)'), True))
+            
+            m_col5, m_col6, m_col7 = st.columns(3)
+            m_col5.metric("Debt to Equity", format_metric(ticker_metrics.get('Debt to Equity')))
+            m_col6.metric("Past EPS Growth", format_metric(ticker_metrics.get('Past EPS Growth (%)'), True))
+            m_col7.metric("Expected Growth", format_metric(ticker_metrics.get('Expected Growth (%)'), True))
+        else:
+            st.warning("Financial metrics currently unavailable for this ticker.")
 
         # --- Modernized Professional Chart ---
         fig_t = go.Figure()
