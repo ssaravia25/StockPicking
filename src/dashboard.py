@@ -33,9 +33,9 @@ def get_engine():
     return engine
 
 @st.cache_resource
-def get_metrics_engine_v2():
+def get_metrics_engine_v3():
     # Use a persistent path for Streamlit Cloud
-    return MetricsEngine(universe, cache_file="metrics_cache_v2.json")
+    return MetricsEngine(universe, cache_file="metrics_cache_v3.json")
 
 @st.cache_data
 def run_backtest(_engine, exit_strategy):
@@ -86,7 +86,7 @@ exit_strategy = st.sidebar.selectbox("Exit Strategy", ["trend_guardian", "sma_tr
 
 # Initialize Engines
 engine = get_engine()
-metrics_engine = get_metrics_engine_v2()
+metrics_engine = get_metrics_engine_v3()
 
 # --- Main App ---
 st.title("📈 Trading Matrix Performance & Alerts")
