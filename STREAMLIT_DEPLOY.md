@@ -20,7 +20,7 @@
 
 ### Memory Optimization
 
-Your app loads ~400 tickers with 5 years of historical data. Streamlit Cloud free tier has **1GB RAM limit**.
+Your app loads ~400 tickers with 2 years of historical data. Streamlit Cloud free tier has **1GB RAM limit**.
 
 **Current status**: The app may crash or timeout during initial data load.
 
@@ -34,7 +34,7 @@ Your app loads ~400 tickers with 5 years of historical data. Streamlit Cloud fre
    - Team: $250/month (8GB RAM)
 
 3. **Optimize data loading**:
-   - Reduce period from `10y` to `5y` or `3y`
+   - Reduce period from `2y` to `1y` if needed
    - Load data on-demand instead of all at once
 
 ### Files Changed

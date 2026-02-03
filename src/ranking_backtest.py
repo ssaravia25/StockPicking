@@ -30,7 +30,7 @@ class RankingEngine:
         print(f"Loading data for {len(self.tickers)} tickers...")
         def fetch(t):
             try:
-                engine = BacktestEngine(t, period="5y")
+                engine = BacktestEngine(t, period="2y")
                 engine.prepare_data()
                 return t, engine.data
             except:
@@ -54,9 +54,9 @@ class RankingEngine:
             all_dfs.append(df[["Close"]].rename(columns={"Close": t}))
         
         market_index = pd.concat(all_dfs, axis=1).index.sort_values().unique()
-        # Start from 5 years ago (dynamically calculated)
-        five_years_ago = pd.Timestamp.now() - pd.DateOffset(years=5)
-        market_index = market_index[market_index >= five_years_ago.tz_localize(market_index.tz)]
+        # Start from 2 years ago (dynamically calculated)
+        two_years_ago = pd.Timestamp.now() - pd.DateOffset(years=2)
+        market_index = market_index[market_index >= two_years_ago.tz_localize(market_index.tz)]
         
         print(f"Starting {exit_strategy} simulation from {market_index[0]}...")
         
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     plt.plot(res_tg["Equity"], label=f"Trend Guardian (+{stats_tg[0]:.0f}%)", color="blue", linewidth=3)
     plt.plot(res_spy["Equity"], label=f"SPY Benchmark (+{stats_spy[0]:.0f}%)", color="gray", linestyle="--", alpha=0.8)
     
-    plt.title("Trend Guardian (Long-Only) vs SPY Benchmark (5-Year Backtest)")
+    plt.title("Trend Guardian (Long-Only) vs SPY Benchmark (2-Year Backtest)")
     plt.ylabel("Equity Value (Start = 100)")
     plt.legend()
     plt.grid(True, which='both', linestyle='--', alpha=0.5)
