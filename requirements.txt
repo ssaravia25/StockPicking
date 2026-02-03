@@ -1,7 +1,8 @@
 # Trading Matrix Dependencies
 
-# Web framework
+# Web frameworks
 streamlit>=1.30.0
+gradio>=4.0.0
 plotly>=5.18.0
 matplotlib>=3.8.0
 
