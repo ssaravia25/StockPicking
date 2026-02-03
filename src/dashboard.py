@@ -41,7 +41,7 @@ def get_metrics_engine_v3():
     """
     return MetricsEngine(universe, cache_file="metrics_cache_v3.json")
 
-@st.cache_data(ttl=3600, show_spinner="Running backtest... Calculating performance since 2018.")
+@st.cache_data(ttl=3600, show_spinner="Running backtest... Calculating 5-year performance.")
 def run_backtest(_engine, exit_strategy):
     """
     Run backtest with specified exit strategy. Cached for 1 hour.
@@ -455,6 +455,6 @@ st.markdown("""
 <div style="text-align: center; color: #888; font-size: 0.8em; padding: 20px;">
     Made by <b>SFinance</b>, not investment advise.<br>
     Any suggestions? mail to: <a href="mailto:sgseaux@gmail.com" style="color: #00ff00;">sgseaux@gmail.com</a><br>
-    <span style="font-size: 0.7em; opacity: 0.6;">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 2018-2026</span>
+    <span style="font-size: 0.7em; opacity: 0.6;">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Data coverage: 5 years</span>
 </div>
 """, unsafe_allow_html=True)

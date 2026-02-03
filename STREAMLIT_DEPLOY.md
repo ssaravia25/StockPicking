@@ -20,7 +20,7 @@
 
 ### Memory Optimization
 
-Your app loads ~400 tickers with 10 years of historical data. Streamlit Cloud free tier has **1GB RAM limit**.
+Your app loads ~400 tickers with 5 years of historical data. Streamlit Cloud free tier has **1GB RAM limit**.
 
 **Current status**: The app may crash or timeout during initial data load.
 
