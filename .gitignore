@@ -9,6 +9,7 @@ env/
 
 # Environment
 .env
+.streamlit/secrets.toml
 
 # Data & Exports
 src/batch_results.csv

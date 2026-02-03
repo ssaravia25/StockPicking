@@ -26,31 +26,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading market data... This may take 2-3 minutes on first run.")
 def get_engine():
+    """Load the ranking engine with data. Cached to avoid reloading on every interaction."""
     engine = RankingEngine(universe)
     engine.load_data()
     return engine
 
-@st.cache_resource
+@st.cache_resource(ttl=3600, show_spinner="Initializing metrics engine...")
 def get_metrics_engine_v3():
-    # Use a persistent path for Streamlit Cloud
+    """
+    Initialize metrics engine with 1-hour TTL to prevent memory buildup.
+    Streamlit Cloud has 1GB RAM limit - this helps manage memory usage.
+    """
     return MetricsEngine(universe, cache_file="metrics_cache_v3.json")
 
-@st.cache_data
+@st.cache_data(ttl=3600, show_spinner="Running backtest... Calculating performance since 2018.")
 def run_backtest(_engine, exit_strategy):
+    """
+    Run backtest with specified exit strategy. Cached for 1 hour.
+    Results include equity curve, trade log, and current holdings.
+    """
     res_equity, res_trades = _engine.run(exit_strategy=exit_strategy)
     # The 'current' slots are those in engine.long_slots after run()
     # But since it's cached, we should return them
     return res_equity, res_trades, _engine.long_slots
 
-@st.cache_data
+@st.cache_data(ttl=86400)  # Cache for 24 hours
 def get_spy_data(start_date, end_date):
-    spy = yf.Ticker("SPY").history(start=start_date, end=end_date)
-    spy.index = spy.index.tz_localize(None)
-    spy_daily = spy["Close"].pct_change().fillna(0)
-    spy_equity = (1 + spy_daily).cumprod() * 100
-    return pd.DataFrame({"Equity": spy_equity}, index=spy.index)
+    """Fetch SPY benchmark data. Cached for 24 hours since it doesn't change intraday."""
+    try:
+        spy = yf.Ticker("SPY").history(start=start_date, end=end_date)
+        spy.index = spy.index.tz_localize(None)
+        spy_daily = spy["Close"].pct_change().fillna(0)
+        spy_equity = (1 + spy_daily).cumprod() * 100
+        return pd.DataFrame({"Equity": spy_equity}, index=spy.index)
+    except Exception as e:
+        st.error(f"Failed to fetch SPY data: {e}")
+        return pd.DataFrame({"Equity": [100]}, index=[start_date])
 
 def calculate_annual_metrics(equity_df):
     """Calculate Return per year and YTD."""
@@ -141,7 +154,7 @@ with tabs[0]:
                     <p style="font-size: 0.9em; color: #888;">Stage 2 + Score < 4 + Quality Ranking > 85%. Los mejores fundamentales en las mejores configuraciones técnicas.</p>
                 </div>
                 """, unsafe_allow_html=True)
-                st.dataframe(top_ideas.style.set_properties(**{'background-color': 'rgba(255, 215, 0, 0.1)', 'color': 'white'}), use_container_width=True)
+                st.dataframe(top_ideas.style.set_properties(**{'background-color': 'rgba(255, 215, 0, 0.1)', 'color': 'white'}), width='stretch')
                 st.markdown("---")
 
             # Buy Alerts
@@ -150,11 +163,11 @@ with tabs[0]:
             col1, col2 = st.columns([1, 1])
             with col1:
                 st.subheader("🎯 Buy Alerts (Stage 2 + Score < 4)")
-                st.dataframe(best_candidates, use_container_width=True)
+                st.dataframe(best_candidates, width='stretch')
             
             with col2:
                 st.subheader("📉 Full Universe Snapshot")
-                st.dataframe(summary_df.sort_values("Score"), use_container_width=True)
+                st.dataframe(summary_df.sort_values("Score"), width='stretch')
 
 # Tab 2: Performance Hub
 with tabs[1]:
@@ -178,7 +191,7 @@ with tabs[1]:
     fig.add_trace(go.Scatter(x=res.index, y=res["Equity"], name="Strategy", line=dict(color='blue', width=3)))
     fig.add_trace(go.Scatter(x=spy_res.index, y=spy_res["Equity"], name="SPY Benchmark", line=dict(color='gray', dash='dash')))
     fig.update_layout(title="Equity Growth (Start = 100)", xaxis_title="Date", yaxis_title="Equity", height=500)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # Exposure Chart
     st.subheader("🛡️ Portfolio Exposure (Active Slots)")
@@ -197,7 +210,7 @@ with tabs[1]:
         yaxis=dict(range=[0, 16]),
         height=300
     )
-    st.plotly_chart(fig_exp, use_container_width=True)
+    st.plotly_chart(fig_exp, width='stretch')
     st.caption("When exposure is low (e.g., < 7 slots), a large gain in one stock has a smaller impact on total equity (Cash Drag).")
 
     # Current Portfolio View
@@ -218,7 +231,7 @@ with tabs[1]:
             "Entry Price": "${:.2f}",
             "Current Price": "${:.2f}",
             "Performance (%)": "{:+.2f}%"
-        }), use_container_width=True)
+        }), width='stretch')
     else:
         st.write("Portfolio is currently empty.")
 
@@ -229,12 +242,12 @@ with tabs[1]:
     with col_ann1:
         ann_stats = calculate_annual_metrics(res)
         st.write("**Strategy Returns by Year**")
-        st.dataframe(ann_stats.style.format({"Return (%)": "{:.2f}%"}), use_container_width=True)
+        st.dataframe(ann_stats.style.format({"Return (%)": "{:.2f}%"}), width='stretch')
     
     with col_ann2:
         spy_ann = calculate_annual_metrics(spy_res)
         st.write("**SPY Returns by Year**")
-        st.dataframe(spy_ann.style.format({"Return (%)": "{:.2f}%"}), use_container_width=True)
+        st.dataframe(spy_ann.style.format({"Return (%)": "{:.2f}%"}), width='stretch')
 
 # Tab 3: Trade Explorer
 with tabs[2]:
@@ -400,7 +413,7 @@ with tabs[2]:
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)'
         )
-        st.plotly_chart(fig_t, use_container_width=True)
+        st.plotly_chart(fig_t, width='stretch')
         
         # Trades Table
         if not ticker_trades.empty:
@@ -411,7 +424,7 @@ with tabs[2]:
                 "Return (%)": "{:+.2f}%",
                 "Entry_Date": lambda x: x.strftime('%Y-%m-%d'),
                 "Exit_Date": lambda x: x.strftime('%Y-%m-%d')
-            }).background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=-15, vmax=15), use_container_width=True)
+            }).background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=-15, vmax=15), width='stretch')
     else:
         st.warning(f"Data for {selected_ticker} not loaded correctly. Try refreshing.")
 
