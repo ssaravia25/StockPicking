@@ -13,10 +13,10 @@ from gspread_formatting import (
     CellFormat,
     Color,
     ConditionalFormatRule,
+    ConditionalFormatRules,
     GridRange,
     TextFormat,
     format_cell_range,
-    set_conditional_format_rules,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,8 @@ def apply_formatting(
             )
 
         try:
-            set_conditional_format_rules(ws, rules)
+            cf_rules = ConditionalFormatRules(ws, *rules)
+            cf_rules.save()
         except Exception as e:
             logger.warning(f"Could not apply conditional formatting: {e}")
 

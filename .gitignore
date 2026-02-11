@@ -17,5 +17,11 @@ src/batch_results.csv
 *.webp
 *.csv
 
+# Exception: keep backtest equity curve charts (needed by daily email)
+!.tmp/
+.tmp/*
+!.tmp/equity_curve_*.png
+!.tmp/top100_tickers.txt
+
 # OS
 .DS_Store
