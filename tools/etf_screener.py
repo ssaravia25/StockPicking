@@ -47,7 +47,12 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-RECIPIENTS = ["sergiosar@gmail.com", "sgseaux@gmail.com"]
+DEFAULT_RECIPIENTS = ["sergiosar@gmail.com", "sgseaux@gmail.com"]
+RECIPIENTS = [
+    r.strip()
+    for r in os.environ.get("ETF_SCREENER_RECIPIENTS", "").split(",")
+    if r.strip()
+] or DEFAULT_RECIPIENTS
 
 ETF_LIST = [
     # Major indices
