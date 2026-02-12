@@ -20,5 +20,8 @@ gspread>=6.0.0
 gspread-formatting>=1.1.0
 google-auth>=2.25.0
 
+# AI
+anthropic>=0.40.0
+
 # Environment variables
 python-dotenv>=1.0.0

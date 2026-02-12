@@ -1,0 +1,32 @@
+name: Daily ETF Screener
+
+on:
+  schedule:
+    # 8:00 AM Madrid (CET) = 07:00 UTC (Mon-Fri)
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:  # Manual trigger from GitHub UI
+
+jobs:
+  run-etf-screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run ETF Screener
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python tools/etf_screener.py
