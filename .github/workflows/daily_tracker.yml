@@ -2,8 +2,8 @@ name: Daily Portfolio Tracker
 
 on:
   schedule:
-    # 4:30 PM ET = 21:30 UTC (Mon-Fri)
-    - cron: '30 21 * * 1-5'
+    # 9:00 AM New York (ET) = 14:00 UTC (Mon-Fri)
+    - cron: '0 14 * * 1-5'
   workflow_dispatch:  # Manual trigger from GitHub UI
 
 jobs:

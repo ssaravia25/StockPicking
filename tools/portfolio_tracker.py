@@ -557,6 +557,24 @@ def run_tracker(dry_run: bool = False, force_rebalance: bool = False):
             })
             logger.info(f"ENTRY: {ticker} @ ${c['Price']:.2f} (RS: {c['RS_Score']}, Score: {c['Score']})")
 
+    # Add newly entered longs to holdings_data so they appear in the email
+    for e in entries_today:
+        ticker = e["Ticker"]
+        result = scan_results.get(ticker)
+        if result and not any(h["Ticker"] == ticker for h in holdings_data):
+            holdings_data.append({
+                "Ticker": ticker,
+                "Entry_Date": today,
+                "Entry_Price": e["Price"],
+                "Current_Price": result["Price"],
+                "PnL_Pct": 0.0,
+                "Stage": result["Stage"],
+                "Score": result["Score"],
+                "Trend": result["Trend_Template"],
+                "RS_Score": result["RS_Score"],
+                "Alert": ""
+            })
+
     # ── Step 8: Fill SHORT slots ─────────────────────────────────────────
     if short_open_slots > 0 and short_candidates:
         fills = short_candidates[:short_open_slots]
@@ -573,6 +591,63 @@ def run_tracker(dry_run: bool = False, force_rebalance: bool = False):
                 "Sector": c.get("Sector", "")
             })
             logger.info(f"SHORT ENTRY: {ticker} @ ${c['Price']:.2f} (SS: {c['Short_Score']}, RS: {c['RS_Score']})")
+
+    # Add newly entered shorts to short_holdings_data so they appear in the email
+    for e in short_entries_today:
+        ticker = e["Ticker"]
+        result = scan_results.get(ticker)
+        if result and not any(h["Ticker"] == ticker for h in short_holdings_data):
+            short_holdings_data.append({
+                "Ticker": ticker,
+                "Entry_Date": today,
+                "Entry_Price": e["Price"],
+                "Current_Price": result["Price"],
+                "PnL_Pct": 0.0,
+                "Stage": result["Stage"],
+                "Score": result["Short_Score"],
+                "Trend": result["Trend_Template"],
+                "RS_Score": result["RS_Score"],
+                "Alert": ""
+            })
+
+    # ── Step 8b: Detect NEW arrivals (portfolio + waiting list) ─────────
+    prev_long_cands = set(state.get("prev_long_candidate_tickers", []))
+    prev_short_cands = set(state.get("prev_short_candidate_tickers", []))
+    prev_long_holdings = set(state.get("prev_long_holding_tickers", []))
+    prev_short_holdings_set = set(state.get("prev_short_holding_tickers", []))
+
+    # Current ticker sets
+    current_long_cand_tickers = {c["Ticker"] for c in candidates}
+    current_short_cand_tickers = {c["Ticker"] for c in short_candidates}
+    current_long_holding_tickers = set(holdings.keys())
+    current_short_holding_tickers = set(short_holdings.keys())
+
+    # New arrivals = tickers that weren't in yesterday's lists
+    new_long_portfolio = [e for e in entries_today
+                          if e["Ticker"] not in prev_long_holdings]
+    new_short_portfolio = [e for e in short_entries_today
+                           if e["Ticker"] not in prev_short_holdings_set]
+    new_long_watchlist = [c for c in candidates
+                          if c["Ticker"] not in prev_long_cands
+                          and c["Ticker"] not in current_long_holding_tickers]
+    new_short_watchlist = [c for c in short_candidates
+                           if c["Ticker"] not in prev_short_cands
+                           and c["Ticker"] not in current_short_holding_tickers]
+
+    has_new_arrivals = (new_long_portfolio or new_short_portfolio
+                        or new_long_watchlist or new_short_watchlist)
+
+    if has_new_arrivals:
+        logger.info(f"NEW ARRIVALS: {len(new_long_portfolio)} long entries, "
+                    f"{len(new_short_portfolio)} short entries, "
+                    f"{len(new_long_watchlist)} long watchlist, "
+                    f"{len(new_short_watchlist)} short watchlist")
+
+    # Save current candidate/holding tickers for next run comparison
+    state["prev_long_candidate_tickers"] = sorted(current_long_cand_tickers)
+    state["prev_short_candidate_tickers"] = sorted(current_short_cand_tickers)
+    state["prev_long_holding_tickers"] = sorted(current_long_holding_tickers)
+    state["prev_short_holding_tickers"] = sorted(current_short_holding_tickers)
 
     # ── Step 9: Update equity (long portfolio) ───────────────────────────
     active_holdings_data = [h for h in holdings_data if h["Ticker"] in holdings]
@@ -634,6 +709,29 @@ def run_tracker(dry_run: bool = False, force_rebalance: bool = False):
     print(f"  Avg P&L (long): {avg_pnl:+.1f}%")
     print(f"  Avg P&L (short): {avg_short_pnl:+.1f}%")
     print(f"  Rebalance Day: {'YES' if rebalance_day else 'No'}")
+
+    # ── NEW ARRIVALS ALERT ────────────────────────────────────────────
+    if has_new_arrivals:
+        print(f"\n  {'!'*50}")
+        print(f"  !!  ALERT: NEW ARRIVALS DETECTED")
+        print(f"  {'!'*50}")
+        if new_long_portfolio:
+            print(f"  >> NEW Long Portfolio Entries:")
+            for e in new_long_portfolio:
+                print(f"     * {e['Ticker']:6s}  ${e['Price']:>8.2f}  RS: {e['RS_Score']:>6.2f}  Score: {e['Score']}")
+        if new_short_portfolio:
+            print(f"  >> NEW Short Portfolio Entries:")
+            for e in new_short_portfolio:
+                print(f"     * {e['Ticker']:6s}  ${e['Price']:>8.2f}  SS: {e['Short_Score']}  RS: {e['RS_Score']:.2f}")
+        if new_long_watchlist:
+            print(f"  >> NEW Long Watchlist Arrivals:")
+            for c in new_long_watchlist:
+                print(f"     + {c['Ticker']:6s}  ${c['Price']:>8.2f}  RS: {c['RS_Score']:>6.2f}  Score: {c['Score']}  {c['Sector']}")
+        if new_short_watchlist:
+            print(f"  >> NEW Short Watchlist Arrivals:")
+            for c in new_short_watchlist:
+                print(f"     + {c['Ticker']:6s}  ${c['Price']:>8.2f}  SS: {c['Short_Score']}  RS: {c['RS_Score']:.2f}  {c.get('Sector', '')}")
+        print(f"  {'!'*50}")
 
     if exits_today:
         print(f"\n  --- Long Exits ---")
@@ -707,6 +805,10 @@ def run_tracker(dry_run: bool = False, force_rebalance: bool = False):
         short_entries_today=short_entries_today,
         short_candidates=short_candidates,
         chart_paths=chart_paths,
+        new_long_portfolio=new_long_portfolio,
+        new_short_portfolio=new_short_portfolio,
+        new_long_watchlist=new_long_watchlist,
+        new_short_watchlist=new_short_watchlist,
     )
 
 
@@ -869,7 +971,9 @@ def send_tracker_email(holdings_data, exits_today, entries_today, candidates,
                        rebalance_day, current_equity=100, ytd_pct=0,
                        short_holdings_data=None, short_exits_today=None,
                        short_entries_today=None, short_candidates=None,
-                       chart_paths=None):
+                       chart_paths=None,
+                       new_long_portfolio=None, new_short_portfolio=None,
+                       new_long_watchlist=None, new_short_watchlist=None):
     """Send daily summary email with long + short portfolios and charts."""
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
@@ -889,6 +993,10 @@ def send_tracker_email(holdings_data, exits_today, entries_today, candidates,
     short_entries_today = short_entries_today or []
     short_candidates = short_candidates or []
     chart_paths = chart_paths or []
+    new_long_portfolio = new_long_portfolio or []
+    new_short_portfolio = new_short_portfolio or []
+    new_long_watchlist = new_long_watchlist or []
+    new_short_watchlist = new_short_watchlist or []
 
     today = datetime.now().strftime("%Y-%m-%d")
     total_long = len([h for h in holdings_data if h.get("Current_Price", 0) > 0])
@@ -926,6 +1034,38 @@ def send_tracker_email(holdings_data, exits_today, entries_today, candidates,
         </div>
     </div>
     """
+
+    # Section: NEW ARRIVALS ALERT (urgent, shown only when there are new companies)
+    has_new = new_long_portfolio or new_short_portfolio or new_long_watchlist or new_short_watchlist
+    if has_new:
+        html += """
+        <div style="background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+                    color: white; padding: 18px; border-radius: 10px;
+                    margin-bottom: 20px; border: 2px solid #b71c1c;">
+            <h2 style="margin: 0 0 12px 0; font-size: 18px;">
+                &#x1F6A8; NEW ARRIVALS ALERT</h2>
+        """
+        if new_long_portfolio:
+            html += '<p style="margin: 8px 0 4px 0; font-weight: bold; font-size: 13px; opacity: 0.9;">New Long Portfolio Entries:</p><ul style="margin: 0; padding-left: 20px;">'
+            for e in new_long_portfolio:
+                html += f'<li style="margin: 3px 0;"><strong>{e["Ticker"]}</strong> @ ${e["Price"]:.2f} (RS: {e["RS_Score"]}, Score: {e["Score"]}, {e["Sector"]})</li>'
+            html += '</ul>'
+        if new_short_portfolio:
+            html += '<p style="margin: 8px 0 4px 0; font-weight: bold; font-size: 13px; opacity: 0.9;">New Short Portfolio Entries:</p><ul style="margin: 0; padding-left: 20px;">'
+            for e in new_short_portfolio:
+                html += f'<li style="margin: 3px 0;"><strong>{e["Ticker"]}</strong> @ ${e["Price"]:.2f} (SS: {e["Short_Score"]}, RS: {e["RS_Score"]:.2f})</li>'
+            html += '</ul>'
+        if new_long_watchlist:
+            html += '<p style="margin: 8px 0 4px 0; font-weight: bold; font-size: 13px; opacity: 0.9;">New Long Watchlist Arrivals:</p><ul style="margin: 0; padding-left: 20px;">'
+            for c in new_long_watchlist:
+                html += f'<li style="margin: 3px 0;"><strong>{c["Ticker"]}</strong> — ${c["Price"]:.2f} (RS: {c["RS_Score"]}, Score: {c["Score"]}, {c["Sector"]})</li>'
+            html += '</ul>'
+        if new_short_watchlist:
+            html += '<p style="margin: 8px 0 4px 0; font-weight: bold; font-size: 13px; opacity: 0.9;">New Short Watchlist Arrivals:</p><ul style="margin: 0; padding-left: 20px;">'
+            for c in new_short_watchlist:
+                html += f'<li style="margin: 3px 0;"><strong>{c["Ticker"]}</strong> — ${c["Price"]:.2f} (SS: {c["Short_Score"]}, RS: {c["RS_Score"]:.2f}, {c.get("Sector", "")})</li>'
+            html += '</ul>'
+        html += '</div>'
 
     # Section: Today's Actions (Long + Short combined)
     has_actions = exits_today or entries_today or short_exits_today or short_entries_today
@@ -1081,6 +1221,39 @@ def send_tracker_email(holdings_data, exits_today, entries_today, candidates,
             """
         html += "</tbody></table></div>"
 
+    # Section: Short Waiting List (top 5)
+    remaining_short = [c for c in short_candidates if c["Ticker"] not in
+                       {h["Ticker"] for h in short_holdings_data}]
+    if remaining_short:
+        html += """
+        <div style="margin-bottom: 20px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
+                Short Waiting List (Top 5)
+            </h3>
+            <table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+                <thead>
+                    <tr style="background-color: #e74c3c; color: white;">
+                        <th style="padding: 8px; text-align: left;">Ticker</th>
+                        <th style="padding: 8px;">Price</th>
+                        <th style="padding: 8px;">Short Score</th>
+                        <th style="padding: 8px;">RS Score</th>
+                        <th style="padding: 8px;">Sector</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for c in remaining_short[:5]:
+            html += f"""
+                <tr>
+                    <td style="padding: 8px; font-weight: bold;">{c['Ticker']}</td>
+                    <td style="padding: 8px; text-align: center;">${c['Price']:.2f}</td>
+                    <td style="padding: 8px; text-align: center;">{c['Short_Score']}</td>
+                    <td style="padding: 8px; text-align: center;">{c['RS_Score']}</td>
+                    <td style="padding: 8px;">{c.get('Sector', '')}</td>
+                </tr>
+            """
+        html += "</tbody></table></div>"
+
     # Section: Stock Charts (2 long + 2 short, inline images)
     if chart_paths:
         html += """
@@ -1167,9 +1340,13 @@ def send_tracker_email(holdings_data, exits_today, entries_today, candidates,
             if n_entries: parts.append(f"{n_entries} entr{'ies' if n_entries > 1 else 'y'}")
             action_tag = f" | {', '.join(parts)}"
 
+        n_new = (len(new_long_portfolio) + len(new_short_portfolio)
+                 + len(new_long_watchlist) + len(new_short_watchlist))
+        alert_tag = f" | ALERT: {n_new} new" if n_new > 0 else ""
+
         subject = (f"Portfolio Tracker — {today} | "
                    f"L:{total_long}/{MAX_SLOTS} S:{total_short}/{MAX_SHORT_SLOTS}"
-                   f"{action_tag}")
+                   f"{action_tag}{alert_tag}")
 
         msg = MIMEMultipart("related")
         msg["Subject"] = subject
