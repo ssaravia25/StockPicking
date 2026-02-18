@@ -18,7 +18,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 
+import json
 import anthropic
+import gspread
+from google.oauth2 import service_account
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -47,12 +50,36 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
+ETF_SCREENER_SHEET_ID = "1d3pCIrFTsCYPnhqv9iYGjc-rDE06MjsQDrGfSQ1ywyU"
 DEFAULT_RECIPIENTS = ["sergiosar@gmail.com", "sgseaux@gmail.com"]
-RECIPIENTS = [
-    r.strip()
-    for r in os.environ.get("ETF_SCREENER_RECIPIENTS", "").split(",")
-    if r.strip()
-] or DEFAULT_RECIPIENTS
+
+
+def load_recipients_from_sheet() -> list[str]:
+    """Read distribution list from Google Sheets. Falls back to DEFAULT_RECIPIENTS."""
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if not creds_json:
+        logger.warning("GOOGLE_CREDENTIALS_JSON not set, using default recipients")
+        return DEFAULT_RECIPIENTS
+    try:
+        creds_data = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_data, scopes=["https://spreadsheets.google.com/feeds"]
+        )
+        gc = gspread.authorize(creds)
+        sheet = gc.open_by_key(ETF_SCREENER_SHEET_ID).sheet1
+        emails = [
+            row[0].strip().lower()
+            for row in sheet.get_all_values()[1:]  # skip header
+            if row and row[0].strip()
+        ]
+        logger.info(f"Loaded {len(emails)} recipients from Google Sheet")
+        return emails if emails else DEFAULT_RECIPIENTS
+    except Exception as e:
+        logger.error(f"Failed to read Sheet, using defaults: {e}")
+        return DEFAULT_RECIPIENTS
+
+
+RECIPIENTS = load_recipients_from_sheet()
 
 ETF_LIST = [
     # Major indices
@@ -81,6 +108,7 @@ ETF_LIST = [
     "IBIT",  # Bitcoin
     "BTAL",  # Anti-Beta (market neutral)
     "FXE",   # Euro Currency
+    "IGV",   # Software / SaaS
 ]
 
 STAGE_COLORS = {
